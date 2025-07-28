@@ -27,7 +27,7 @@ async def post_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = f"📌 Mahsulot: {name}\n💰 Narx: {price} so‘m\n👇 Buyurtma uchun tugma bosing:"
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("🛒 Buyurtma berish", callback_data="order")]])
 
-    await context.bot.send_photo(chat_id='@gurlan_bozori1', photo=photo_url, caption=caption, reply_markup=kb)
+    await context.bot.send_photo(chat_id='@gurlan_bozori1', photo=photo, caption=caption, reply_markup=kb)
 
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
