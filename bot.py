@@ -10,7 +10,6 @@ logging.basicConfig(level=logging.INFO)
 
 user_state = {}
 
-# Admin rasm + narx yuboradi
 async def handle_admin_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != ADMIN_ID:
         return
@@ -31,7 +30,6 @@ async def handle_admin_photo(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         await update.message.reply_text("✅ Kanalga yuborildi.")
 
-# Tugma bosilganda
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -39,7 +37,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_state[user_id] = {"step": "ask_address"}
     await query.message.reply_text("📍 Manzilingizni yozing:")
 
-# Manzil va telefon so‘rash
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     text = update.message.text
@@ -59,13 +56,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg = f"📥 Yangi buyurtma:\n👤 Ism: {name}\n📍 Manzil: {address}\n📞 Tel: {phone}"
             await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
             await update.message.reply_text("✅ Buyurtmangiz qabul qilindi.")
-
             user_state.pop(user_id)
     else:
         await update.message.reply_text("❗ Iltimos, kanal orqali buyurtma bering.")
 
-# Botni ishga tushirish
-async def main():
+if __name__ == "__main__":
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(MessageHandler(filters.PHOTO & filters.Caption(), handle_admin_photo))
@@ -73,8 +68,4 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot ishga tushdi...")
-    await app.run_polling()
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    app.run_polling()
