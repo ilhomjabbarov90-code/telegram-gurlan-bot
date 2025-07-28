@@ -1,78 +1,78 @@
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import logging
+import os
 
-BOT_TOKEN = "7980498195:AAERSaDhImL7ypJjYex0LNclaepboP-C6nE"
+BOT_TOKEN = "8032558089:AAE00ASKBWHhcmsE1zYW2_u4ZLaLo6F7CIA"
+CHANNEL_ID = "@gurlan_bozori1"
 ADMIN_ID = 1722876301
 
 logging.basicConfig(level=logging.INFO)
 
 user_state = {}
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Salom! Men sizga buyurtma berishda yordam beraman.")
-
-async def post_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
+# ✅ Admin oddiy rasm yuborganda ishlaydi
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != ADMIN_ID:
         return
+    
+    # Rasmni yuklab olish
+    photo_file = await update.message.photo[-1].get_file()
+    photo_path = f"temp.jpg"
+    await photo_file.download_to_drive(photo_path)
 
-    if not context.args or len(context.args) < 3:
-        await update.message.reply_text("Foydalanish: /post rasm narx nom")
-        return
+    # Tagidagi matnni olish
+    caption = update.message.caption or "Narx va nom yo‘q"
 
-    photo_url = context.args[0]
-    price = context.args[1]
-    name = " ".join(context.args[2:])
+    # Tugma
+    button = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🛒 Buyurtma berish", callback_data="order")]
+    ])
 
-    caption = f"📌 Mahsulot: {name}\n💰 Narx: {price} so‘m\n👇 Buyurtma uchun tugma bosing:"
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🛒 Buyurtma berish", callback_data="order")]])
+    # Kanalga yuborish
+    with open(photo_path, "rb") as photo:
+        await context.bot.send_photo(
+            chat_id=CHANNEL_ID,
+            photo=photo,
+            caption=caption,
+            reply_markup=button
+        )
 
-    await context.bot.send_photo(chat_id='@gurlan_bozori1', photo=photo, caption=caption, reply_markup=kb)
+    # Faylni o‘chirish
+    os.remove(photo_path)
 
-async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🛍 Buyurtma bosilganda
+async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_state[query.from_user.id] = {}
-    await query.message.reply_text("📍 Manzilingizni yozing:")
+    await query.message.reply_text("📍 Manzilingizni yuboring:")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if uid not in user_state:
-        return
+# 📝 Manzil va tel raqam olish
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
 
-    text = update.message.text
-    state = user_state[uid]
+    if user_id in user_state:
+        if 'address' not in user_state[user_id]:
+            user_state[user_id]['address'] = update.message.text
+            await update.message.reply_text("📞 Telefon raqamingizni yuboring:")
+        else:
+            user_state[user_id]['phone'] = update.message.text
+            # Adminga yuborish
+            msg = (
+                f"🆕 Yangi buyurtma:\n\n"
+                f"👤 Ismi: {update.message.from_user.full_name}\n"
+                f"📍 Manzil: {user_state[user_id]['address']}\n"
+                f"📞 Tel: {user_state[user_id]['phone']}"
+            )
+            await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
+            await update.message.reply_text("✅ Buyurtmangiz qabul qilindi!")
+            del user_state[user_id]
 
-    if "address" not in state:
-        state["address"] = text
-        await update.message.reply_text("📞 Telefon raqamingizni kiriting:")
-    else:
-        phone = text
-        address = state["address"]
-        username = update.effective_user.username or 'Nomaʼlum'
+# 🔧 Botni ishga tushurish
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+app.add_handler(MessageHandler(filters.PHOTO & filters.User(ADMIN_ID), handle_photo))
+app.add_handler(CallbackQueryHandler(handle_order_callback))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-        await context.bot.send_message(chat_id=ADMIN_ID,
-            text=f"🆕 Yangi buyurtma:\n👤 @{username}\n📍 Manzil: {address}\n📞 Tel: {phone}")
-        await update.message.reply_text("✅ Buyurtma qabul qilindi.")
-
-        del user_state[uid]
-
-if __name__ == "__main__":
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("post", post_product))
-    app.add_handler(CallbackQueryHandler(button_click, pattern="order"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    app.run_polling()
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Konsolga xatoni yozadi
-    logging.error("Exception while handling an update:", exc_info=context.error)
-
-    # Foydalanuvchiga javob berishga harakat qiladi
-    if isinstance(update, Update) and update.message:
-        await update.message.reply_text("Botda xatolik yuz berdi. Iltimos, keyinroq urinib ko‘ring.")
-
-# va bu qatorni ham qo‘shing — bu handlerni ro‘yxatdan o‘tkazadi
-application.add_error_handler(error_handler)
+app.run_polling()
