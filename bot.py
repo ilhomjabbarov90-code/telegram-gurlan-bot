@@ -1,110 +1,80 @@
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 import logging
-from telegram import (
-    Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
-)
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters,
-    ConversationHandler, ContextTypes
-)
 
-TOKEN = '8032558089:AAE00ASKBWHhcmsE1zYW2_u4ZLaLo6F7CIA'
-CHANNEL = '@gurlan_bozori1'
+BOT_TOKEN = '8032558089:AAE00ASKBWHhcmsE1zYW2_u4ZLaLo6F7CIA'
 ADMIN_ID = 1722876301
 
 logging.basicConfig(level=logging.INFO)
 
-ASK_ADDRESS, ASK_PHONE = range(2)
-user_data_dict = {}
+users_state = {}
 
-# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Assalomu alaykum! Bu bot orqali siz mahsulotlar haqida ma’lumot olishingiz yoki buyurtma berishingiz mumkin.")
+    await update.message.reply_text("Salom! Men sizga buyurtma berishda yordam beraman.")
 
-# /post (faqat admin uchun)
-async def post(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("Kechirasiz, bu buyruq faqat admin uchun.")
+async def post_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_ID:
         return
 
-    if not context.args:
-        await update.message.reply_text("Foydalanish: /post Mahsulot | Narx | RasmURL")
+    if not context.args or len(context.args) < 3:
+        await update.message.reply_text("Foydalanish: /post rasm_url narx mahsulot_nomi")
         return
 
-    try:
-        text = " ".join(context.args)
-        name, price, image_url = [x.strip() for x in text.split("|")]
-    except:
-        await update.message.reply_text("Xatolik: format noto‘g‘ri. /post Mahsulot | Narx | RasmURL")
-        return
+    photo_url = context.args[0]
+    narx = context.args[1]
+    nom = " ".join(context.args[2:])
 
-    caption = f"📌 Mahsulot: {name}\n💰 Narx: {price}\n\n👇 Buyurtma berish uchun tugmani bosing:"
-    button = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛒 Buyurtma berish", callback_data="buyurtma")]
-    ])
+    caption = f"📌 Mahsulot: {nom}\n💰 Narx: {narx} so‘m\n👇 Buyurtma berish uchun tugmani bosing:"
+    button = InlineKeyboardMarkup.from_button(
+        InlineKeyboardButton("📦 Buyurtma berish", callback_data="order")
+    )
 
     await context.bot.send_photo(
-        chat_id=CHANNEL,
-        photo=image_url,
+        chat_id='@gurlan_bozori1',
+        photo=photo_url,
         caption=caption,
         reply_markup=button
     )
 
-    await update.message.reply_text("✅ Mahsulot kanalga yuborildi.")
-
-# Tugma bosilganda
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     user_id = query.from_user.id
-    user_data_dict[user_id] = {}
-    await context.bot.send_message(chat_id=user_id, text="🚚 Buyurtma berish uchun manzilingizni kiriting:")
-    return ASK_ADDRESS
+    users_state[user_id] = {"step": "ask_address"}
 
-# Manzil qabul qilish
-async def ask_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await query.message.reply_text("📍 Manzilingizni kiriting:")
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    user_data_dict[user_id]['address'] = update.message.text
-    await update.message.reply_text("📞 Endi telefon raqamingizni yuboring:")
-    return ASK_PHONE
+    text = update.message.text
 
-# Telefon qabul qilish
-async def ask_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_data_dict[user_id]['phone'] = update.message.text
+    if user_id not in users_state:
+        return
 
-    address = user_data_dict[user_id]['address']
-    phone = user_data_dict[user_id]['phone']
-    full_name = update.effective_user.full_name
-    username = update.effective_user.username or "yo‘q"
+    step = users_state[user_id]["step"]
 
-    msg = f"📥 Yangi buyurtma:\n👤 Ism: {full_name}\n🔗 Username: @{username}\n📍 Manzil: {address}\n📞 Tel: {phone}"
-    await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
+    if step == "ask_address":
+        users_state[user_id]["address"] = text
+        users_state[user_id]["step"] = "ask_phone"
+        await update.message.reply_text("📞 Telefon raqamingizni kiriting:")
+    elif step == "ask_phone":
+        users_state[user_id]["phone"] = text
 
-    await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada siz bilan bog‘lanamiz.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
+        address = users_state[user_id]["address"]
+        phone = users_state[user_id]["phone"]
 
-# Bekor qilish
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Buyurtma bekor qilindi.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
+        msg = f"🆕 Yangi buyurtma:\n\n📍 Manzil: {address}\n📞 Telefon: {phone}\n👤 Foydalanuvchi: @{update.effective_user.username or 'Nomaʼlum'}"
+        await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
+        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada bog‘lanamiz!")
 
-def main():
-    app = Application.builder().token(TOKEN).build()
+        del users_state[user_id]
 
-    conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(button_click, pattern="^buyurtma$")],
-        states={
-            ASK_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_address)],
-            ASK_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_phone)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("post", post_product))
+app.add_handler(CallbackQueryHandler(button_click))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("post", post))
-    app.add_handler(conv_handler)
-
+if __name__ == "__main__":
     app.run_polling()
-
-if __name__ == '__main__':
-    main()
