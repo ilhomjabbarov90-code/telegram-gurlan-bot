@@ -66,3 +66,13 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     app.run_polling()
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Konsolga xatoni yozadi
+    logging.error("Exception while handling an update:", exc_info=context.error)
+
+    # Foydalanuvchiga javob berishga harakat qiladi
+    if isinstance(update, Update) and update.message:
+        await update.message.reply_text("Botda xatolik yuz berdi. Iltimos, keyinroq urinib ko‘ring.")
+
+# va bu qatorni ham qo‘shing — bu handlerni ro‘yxatdan o‘tkazadi
+application.add_error_handler(error_handler)
