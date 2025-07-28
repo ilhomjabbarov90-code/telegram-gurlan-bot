@@ -1,5 +1,8 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder, MessageHandler, filters,
+    ContextTypes, CallbackQueryHandler
+)
 import logging
 import os
 
@@ -11,44 +14,39 @@ logging.basicConfig(level=logging.INFO)
 
 user_state = {}
 
-# ✅ Admin oddiy rasm yuborganda ishlaydi
+# Admin rasm yuborsa ishlaydi
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != ADMIN_ID:
         return
-    
-    # Rasmni yuklab olish
-    photo_file = await update.message.photo[-1].get_file()
-    photo_path = f"temp.jpg"
-    await photo_file.download_to_drive(photo_path)
 
-    # Tagidagi matnni olish
-    caption = update.message.caption or "Narx va nom yo‘q"
+    photo = update.message.photo[-1]
+    caption = update.message.caption or "Mahsulot"
 
-    # Tugma
+    file = await photo.get_file()
+    await file.download_to_drive("temp.jpg")
+
     button = InlineKeyboardMarkup([
         [InlineKeyboardButton("🛒 Buyurtma berish", callback_data="order")]
     ])
 
-    # Kanalga yuborish
-    with open(photo_path, "rb") as photo:
+    with open("temp.jpg", "rb") as img:
         await context.bot.send_photo(
             chat_id=CHANNEL_ID,
-            photo=photo,
+            photo=img,
             caption=caption,
             reply_markup=button
         )
 
-    # Faylni o‘chirish
-    os.remove(photo_path)
+    os.remove("temp.jpg")
 
-# 🛍 Buyurtma bosilganda
+# Buyurtma bosilganda
 async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_state[query.from_user.id] = {}
     await query.message.reply_text("📍 Manzilingizni yuboring:")
 
-# 📝 Manzil va tel raqam olish
+# Manzil va tel raqam qabul qilish
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
@@ -58,7 +56,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("📞 Telefon raqamingizni yuboring:")
         else:
             user_state[user_id]['phone'] = update.message.text
-            # Adminga yuborish
             msg = (
                 f"🆕 Yangi buyurtma:\n\n"
                 f"👤 Ismi: {update.message.from_user.full_name}\n"
@@ -69,10 +66,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("✅ Buyurtmangiz qabul qilindi!")
             del user_state[user_id]
 
-# 🔧 Botni ishga tushurish
+# Botni ishga tushurish
 app = ApplicationBuilder().token(BOT_TOKEN).build()
+
 app.add_handler(MessageHandler(filters.PHOTO & filters.User(ADMIN_ID), handle_photo))
 app.add_handler(CallbackQueryHandler(handle_order_callback))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-app.run_polling()
+import asyncio
+if __name__ == "__main__":
+    asyncio.run(app.run_polling())
