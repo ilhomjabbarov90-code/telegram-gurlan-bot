@@ -17,7 +17,7 @@ async def post_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args or len(context.args) < 3:
-        await update.message.reply_text("Foydalanish: /post rasm_url narx nom")
+        await update.message.reply_text("Foydalanish: /post rasm narx nom")
         return
 
     photo_url = context.args[0]
