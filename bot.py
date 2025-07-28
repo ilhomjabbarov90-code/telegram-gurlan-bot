@@ -1,6 +1,9 @@
 import logging
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CommandHandler, CallbackQueryHandler, MessageHandler, Filters, Updater, CallbackContext, ConversationHandler
+from telegram.ext import (
+    Updater, CommandHandler, CallbackQueryHandler,
+    MessageHandler, Filters, CallbackContext, ConversationHandler
+)
 
 # Config
 TOKEN = "8032558089:AAE00ASKBWHhcmsE1zYW2_u4ZLaLo6F7CIA"
@@ -17,26 +20,32 @@ logging.basicConfig(level=logging.INFO)
 def start(update: Update, context: CallbackContext):
     update.message.reply_text("Salom! Men sizga buyurtma berishda yordam beraman.")
 
-# /post <rasm_url> <narx> <mahsulot_nomi>
-def post(update: Update, context: CallbackContext):
-    if update.effective_user.id != ADMIN_ID:
-        update.message.reply_text("Sizda ruxsat yo'q.")
+# Rasm yuborilganda admin tomonidan
+def photo_handler(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        update.message.reply_text("Sizda ruxsat yo‘q.")
         return
 
-    if len(context.args) < 3:
-        update.message.reply_text("Foydalanish: /post rasm_url narx mahsulot_nomi")
+    if not update.message.caption:
+        update.message.reply_text("Rasmga caption (narx va mahsulot nomi) yozing. Masalan:\n\n25 000 So'm Soqol olgich")
         return
 
-    image_url = context.args[0]
-    price = context.args[1]
-    name = ' '.join(context.args[2:])
+    try:
+        parts = update.message.caption.split()
+        price = parts[0] + ' ' + parts[1]
+        name = ' '.join(parts[2:])
+    except:
+        update.message.reply_text("❗ Format xato. Masalan:\n25 000 So'm Soqol olgich")
+        return
 
-    caption = f"📦 Mahsulot: {name}\n💰 Narx: {price} so'm\n\n👇 Buyurtma uchun tugmani bosing:"
+    caption = f"📦 Mahsulot: {name}\n💰 Narx: {price}\n\n👇 Buyurtma uchun tugmani bosing:"
     keyboard = [[InlineKeyboardButton("📥 Buyurtma berish", callback_data=f"order|{name}|{price}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    context.bot.send_photo(chat_id=CHANNEL_ID, photo=image_url, caption=caption, reply_markup=reply_markup)
-    update.message.reply_text("Post kanalga yuborildi ✅")
+    photo_file_id = update.message.photo[-1].file_id
+    context.bot.send_photo(chat_id=CHANNEL_ID, photo=photo_file_id, caption=caption, reply_markup=reply_markup)
+    update.message.reply_text("✅ Kanalga post yuborildi.")
 
 # Tugma bosilganda
 def button_handler(update: Update, context: CallbackContext):
@@ -65,7 +74,7 @@ def ask_phone(update: Update, context: CallbackContext):
     address = context.user_data['address']
     phone = context.user_data['phone']
 
-    msg = f"📥 Yangi buyurtma!\n\n🛒 Mahsulot: {product}\n💰 Narx: {price} so'm\n📍 Manzil: {address}\n📞 Tel: {phone}\n👤 Mijoz: @{update.effective_user.username or update.effective_user.first_name}"
+    msg = f"📥 Yangi buyurtma!\n\n🛒 Mahsulot: {product}\n💰 Narx: {price}\n📍 Manzil: {address}\n📞 Tel: {phone}\n👤 Mijoz: @{update.effective_user.username or update.effective_user.first_name}"
     context.bot.send_message(chat_id=ADMIN_ID, text=msg)
 
     update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada bog‘lanamiz.")
@@ -90,7 +99,7 @@ def main():
     )
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("post", post))
+    dp.add_handler(MessageHandler(Filters.photo & Filters.caption, photo_handler))
     dp.add_handler(conv_handler)
 
     updater.start_polling()
