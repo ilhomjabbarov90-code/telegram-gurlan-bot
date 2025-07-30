@@ -1,80 +1,77 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import logging
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 
+# 🎯 Bu yerga bot tokeningizni yozing
 BOT_TOKEN = "7980498195:AAERSaDhImL7ypJjYex0LNclaepboP-C6nE"
+
+# 📩 Admin Telegram ID
 ADMIN_ID = 1722876301
 
-logging.basicConfig(level=logging.INFO)
+# 🛠 Log sozlamasi
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 
-# Har bir foydalanuvchi uchun vaqtincha ma'lumot saqlovchi lug'at
+# 🧠 Foydalanuvchi holatini saqlovchi lug'at
 user_state = {}
+ASK_PHONE, ASK_ADDRESS = range(2)
 
-# Botni ishga tushirish
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Assalomu alaykum! Buyurtma berish uchun telefon raqamingizni kiriting:")
-    user_state[update.message.chat_id] = {"step": "phone"}
+    await update.message.reply_text("📞 Iltimos, telefon raqamingizni yuboring:")
+    user_state[update.message.chat_id] = ASK_PHONE
 
-# Har bir yangi xabarni qayta ishlash
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
-    text = update.message.text
+    user_id = update.message.chat_id
+    state = user_state.get(user_id)
 
-    user = update.message.from_user
-    username = f"@{user.username}" if user.username else f"{user.first_name or ''} {user.last_name or ''}".strip()
-    if not username.strip():
-        username = f"ID: {user.id}"
+    if state == ASK_PHONE:
+        context.user_data["phone"] = update.message.text
+        await update.message.reply_text("📍 Endi manzilingizni yuboring:")
+        user_state[user_id] = ASK_ADDRESS
 
-    if chat_id not in user_state:
-        await update.message.reply_text("Iltimos /start buyrug'ini bosing.")
-        return
+    elif state == ASK_ADDRESS:
+        context.user_data["address"] = update.message.text
+        phone = context.user_data.get("phone", "Nomaʼlum")
+        address = context.user_data.get("address", "Nomaʼlum")
+        username = update.message.from_user.username or "Nomaʼlum"
+        telegram_id = update.message.from_user.id
 
-    step = user_state[chat_id].get("step")
-
-    if step == "phone":
-        user_state[chat_id]["phone"] = text
-        user_state[chat_id]["step"] = "address"
-        await update.message.reply_text("Endi manzilingizni kiriting:")
-    elif step == "address":
-        phone = user_state[chat_id].get("phone")
-        address = text
-
-        # Buyurtma xabari
-        confirmation = (
+        # ✅ Foydalanuvchiga javob
+        await update.message.reply_text(
             "✅ Buyurtmangiz qabul qilindi. Tez orada siz bilan bog‘lanamiz. Rahmat!"
         )
-        await update.message.reply_text(f"Buyurtma:\n{confirmation}")
 
-        # Adminga xabar
-        order_message = (
+        # 📨 Admin uchun xabar
+        message = (
             f"🆕 Yangi buyurtma:\n"
-            f"👤 {username}\n"
+            f"👤 @{username}\n"
+            f"🆔 ID: {telegram_id}\n"
             f"📞 Telefon: {phone}\n"
             f"📍 Manzil: {address}"
         )
-
         try:
-            await context.bot.send_message(chat_id=ADMIN_ID, text=order_message)
+            await context.bot.send_message(chat_id=ADMIN_ID, text=message)
         except Exception as e:
-            logging.error(f"Adminga xabar yuborilmadi: {e}")
+            logging.error(f"Adminga yuborishda xato: {e}")
 
-        user_state.pop(chat_id)
+        # 🔄 Holatni tozalash
+        user_state.pop(user_id, None)
+
     else:
-        await update.message.reply_text("Iltimos /start buyrug'ini bosing.")
+        await update.message.reply_text("Iltimos, /start buyrug‘i bilan boshlang.")
 
-# Admin test buyrug'i (majburiy emas)
-async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        await context.bot.send_message(chat_id=ADMIN_ID, text="🔔 Adminga test xabar.")
-        await update.message.reply_text("✅ Adminga xabar yuborildi.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Xatolik: {e}")
-
-# Botni ishga tushirish
-app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("admin", test_admin))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 if __name__ == "__main__":
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.run_polling()
