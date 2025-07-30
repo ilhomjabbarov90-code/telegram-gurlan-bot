@@ -1,121 +1,118 @@
+import logging
 from telegram import (
-    Update,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    InputMediaPhoto,
+    Update, InlineKeyboardMarkup, InlineKeyboardButton,
+    InputMediaPhoto
 )
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    filters,
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    CallbackQueryHandler, ContextTypes, filters, ConversationHandler
 )
-import logging
 
-# === 🔑 BOT TOKEN, ADMIN ID, CHANNEL USERNAME ===
+# 🔐 Sozlamalar
 BOT_TOKEN = "8032558089:AAE00ASKBWHhcmsE1zYW2_u4ZLaLo6F7CIA"
 ADMIN_ID = 1722876301
 CHANNEL_USERNAME = "@gurlan_bozori1"
 
-# === 🪵 LOGGING ===
+# 🗂 Holatlar
+ASK_ADDRESS, ASK_PHONE = range(2)
+user_order_data = {}
+
+# 📋 Loglar
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-# === 🗃️ FOYDALANUVCHI HOLATI ===
-user_orders = {}
-
-# === /start ===
+# 🔘 /start buyrug‘i
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📦 Buyurtma botiga xush kelibsiz! Mahsulot uchun rasm yuboring yoki kanaldan tanlang.")
+    await update.message.reply_text("Assalomu alaykum! Mahsulotlar uchun rasm yuboring.")
 
-# === 📤 ADMIN RASM YUBORSA ===
+# 📸 Rasm qabul qilish
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if user_id != ADMIN_ID:
-        return
-
-    caption = update.message.caption or "🆕 Yangi mahsulot!"
     photo = update.message.photo[-1].file_id
-    button = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("📦 Buyurtma berish", callback_data=f"order:{photo}|{caption}")]]
+    caption = update.message.caption or "📦 Yangi mahsulot"
+
+    fancy_caption = (
+        f"🍎 {caption}\n\n"
+        "💰 Narxi: arzon va sifatli!\n"
+        "🚚 Yetkazib berish: 1 kun ichida\n"
+        "📦 Mahsulot soni cheklangan!\n\n"
+        "👇 Hoziroq buyurtma bering:"
     )
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🚀 Buyurtma berish", callback_data="order_now")]
+    ])
 
     await context.bot.send_photo(
         chat_id=CHANNEL_USERNAME,
         photo=photo,
-        caption=f"🛍 {caption}\n\n📲 Buyurtma berish uchun tugmani bosing:",
-        reply_markup=button
+        caption=fancy_caption,
+        reply_markup=keyboard
     )
 
-# === 📥 BUYURTMA BOSILGANDA ===
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🔘 Tugma bosilganda
+async def order_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
-    data = query.data.split("order:")[1]
-    photo_id, caption = data.split("|", 1)
-
     user_id = query.from_user.id
-    user_orders[user_id] = {
-        "photo": photo_id,
-        "caption": caption,
-        "username": query.from_user.username or "Nomaʼlum",
-    }
 
-    await query.message.reply_text("📍 Manzilingizni kiriting:")
-    return
+    user_order_data[user_id] = {}
+    await context.bot.send_message(
+        chat_id=user_id,
+        text="📍 Manzilingizni kiriting:"
+    )
+    return ASK_ADDRESS
 
-# === 📩 FOYDALANUVCHI XABARI ===
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🏠 Manzil olish
+async def get_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
+    user_order_data[user_id]["address"] = update.message.text
 
-    if user_id not in user_orders:
-        await update.message.reply_text("Iltimos, buyurtma berish uchun kanaldagi mahsulot tugmasini bosing.")
-        return
+    await update.message.reply_text("📞 Telefon raqamingizni kiriting:")
+    return ASK_PHONE
 
-    order = user_orders[user_id]
+# 📞 Telefon olish va adminga yuborish
+async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    user_id = user.id
+    user_order_data[user_id]["phone"] = update.message.text
 
-    if "address" not in order:
-        user_orders[user_id]["address"] = update.message.text
-        await update.message.reply_text("📞 Telefon raqamingizni yuboring:")
-    elif "phone" not in order:
-        user_orders[user_id]["phone"] = update.message.text
+    address = user_order_data[user_id]["address"]
+    phone = user_order_data[user_id]["phone"]
+    username = f"@{user.username}" if user.username else "Nomaʼlum"
 
-        username = order['username']
-        address = order['address']
-        phone = order['phone']
-        caption = order['caption']
-        photo_id = order['photo']
+    await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada siz bilan bog‘lanamiz. Rahmat!")
 
-        # 🛎️ ADMINGA XABAR
-        text = (
-            "🆕 *Yangi buyurtma!*\n\n"
-            f"👤 @{username}\n"
-            f"📍 Manzil: {address}\n"
-            f"📞 Tel: {phone}\n"
-            f"📦 Mahsulot: {caption}"
-        )
+    message = (
+        "🆕 Yangi buyurtma:\n"
+        f"👤 {username}\n"
+        f"📞 Telefon: {phone}\n"
+        f"📍 Manzil: {address}"
+    )
 
-        await context.bot.send_photo(
-            chat_id=ADMIN_ID,
-            photo=photo_id,
-            caption=text,
-            parse_mode="Markdown"
-        )
+    await context.bot.send_message(chat_id=ADMIN_ID, text=message)
 
-        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi! Tez orada siz bilan bog‘lanamiz.")
-        user_orders.pop(user_id)
+    return ConversationHandler.END
 
-# === 📦 BOSHLASH ===
+# ❌ Bekor qilish
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Buyurtma bekor qilindi.")
+    return ConversationHandler.END
+
+# 🔁 Botni ishga tushirish
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(order_callback, pattern="^order_now$")],
+        states={
+            ASK_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_address)],
+            ASK_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(CallbackQueryHandler(handle_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(conv_handler)
 
     print("🤖 Bot ishga tushdi...")
     app.run_polling()
