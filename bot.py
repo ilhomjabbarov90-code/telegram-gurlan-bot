@@ -59,6 +59,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = InlineKeyboardMarkup([
     [InlineKeyboardButton("📦 Buyurtma berish ➡️", url="https://t.me/Buyccc_bot?start=order")]
+    ])
 
     try:
         await context.bot.send_photo(
