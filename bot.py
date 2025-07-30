@@ -1,145 +1,96 @@
-from telegram import (
-    Update,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    filters,
+    ApplicationBuilder, CommandHandler,
+    CallbackQueryHandler, MessageHandler,
+    ContextTypes, filters
 )
 import logging
 
-# === 🔑 BOT TOKEN, ADMIN ID, CHANNEL USERNAME ===
-BOT_TOKEN = "8032558089:AAE00ASKBWHhcmsE1zYW2_u4ZLaLo6F7CIA"
-ADMIN_ID = 1722876301
-CHANNEL_USERNAME = "@gurlan_bozori1"
+# 🔧 Sozlamalar
+BOT_TOKEN = '7980498195:AAERSaDhImL7ypJjYex0LNclaepboP-C6nE'
+ADMIN_ID = 1722876301  # ← Sizning Telegram ID'ingiz
 
-# === 🪵 LOGGING ===
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# 🔍 Log sozlamasi
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-# === 🗃️ FOYDALANUVCHI HOLATI ===
-user_orders = {}
+# ⏳ Foydalanuvchi holati
+user_state = {}
 
-# === /start ===
+# 🚀 /start buyrug‘i
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📦 Buyurtma botiga xush kelibsiz!\n\n"
-        "Mahsulot uchun rasm yuboring (faqat admin) yoki kanaldagi mahsulotlardan birini tanlang."
-    )
-
-# === 📤 ADMIN RASM YUBORSA — KANALGA POST QILINADI ===
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if user_id != ADMIN_ID:
-        return
-
-    caption = update.message.caption or "🆕 Yangi mahsulot!"
-    photo = update.message.photo[-1].file_id
-
-    # 📌 caption ichida '|' bo‘lsa, uni almashtirish
-    safe_caption = caption.replace("|", "/")
-
-    # Tugma qo‘shish
-    button = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 Buyurtma berish", callback_data=f"order:{photo}|{safe_caption}")]
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📦 Buyurtma berish", callback_data="buyurtma")]
     ])
-
-    await context.bot.send_photo(
-        chat_id=CHANNEL_USERNAME,
-        photo=photo,
-        caption=f"🛍 {safe_caption}\n\n📲 Buyurtma berish uchun tugmani bosing:",
-        reply_markup=button
+    await update.message.reply_text(
+        "👋 Assalomu alaykum!\nBuyurtma berish uchun quyidagi tugmani bosing:",
+        reply_markup=keyboard
     )
 
-    await update.message.reply_text("✅ Mahsulot kanalda e'lon qilindi.")
-
-# === 📥 FOYDALANUVCHI TUGMANI BOSGANDA ===
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ✅ Tugma bosilganda
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if not query.data.startswith("order:"):
-        return
-
-    try:
-        data = query.data.split("order:")[1]
-        photo_id, caption = data.split("|", 1)
-    except Exception as e:
-        logger.error(f"❌ Callback data xato: {e}")
-        return
-
     user_id = query.from_user.id
-    username = query.from_user.username
-    username_str = f"@{username}" if username else "Nomaʼlum"
+    user_state[user_id] = {"step": "ask_phone"}
 
-    user_orders[user_id] = {
-        "photo": photo_id,
-        "caption": caption,
-        "username": username_str,
-    }
+    await query.message.reply_text(
+        "📞 Hurmatli mijoz, iltimos telefon raqamingizni yuboring:"
+    )
 
-    await query.message.reply_text("📍 Buyurtma uchun manzilingizni kiriting:")
-
-# === 📩 FOYDALANUVCHIDAN MANZIL VA TELEFON QABUL QILISH ===
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+# 💬 Xabarlarni qabul qilish
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     text = update.message.text
 
-    if user_id not in user_orders:
-        await update.message.reply_text("❗ Iltimos, buyurtma uchun avval mahsulot tugmasini bosing.")
-        return
+    if user_id in user_state:
+        step = user_state[user_id].get("step")
 
-    order = user_orders[user_id]
+        if step == "ask_phone":
+            user_state[user_id]["phone"] = text
+            user_state[user_id]["step"] = "ask_address"
+            await update.message.reply_text("📍 Rahmat. Endi manzilingizni yozing:")
 
-    if "address" not in order:
-        user_orders[user_id]["address"] = text
-        await update.message.reply_text("📞 Telefon raqamingizni kiriting:")
-        return
+        elif step == "ask_address":
+            phone = user_state[user_id].get("phone")
+            address = text
+            user_state.pop(user_id)
 
-    if "phone" not in order:
-        user_orders[user_id]["phone"] = text
+            # ✅ Mijozga tasdiq
+            await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada siz bilan bog‘lanamiz. Rahmat!")
 
-        # ✅ Buyurtma tayyor — adminga yuboriladi
-        caption = order["caption"]
-        photo_id = order["photo"]
-        username = order["username"]
-        address = order["address"]
-        phone = order["phone"]
-
-        msg = (
-            "🆕 *Yangi buyurtma!*\n\n"
-            f"👤 {username}\n"
-            f"📍 Manzil: {address}\n"
-            f"📞 Tel: {phone}\n"
-            f"📦 Mahsulot: {caption}"
+            # ✅ Adminga yuborish
+            msg = (
+                f"🆕 Yangi buyurtma:\n"
+                f"👤 @{update.effective_user.username or 'Nomaʼlum'}\n"
+                f"📞 Telefon: {phone}\n"
+                f"📍 Manzil: {address}"
+            )
+            try:
+                await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
+            except Exception as e:
+                logging.error(f"❗ Adminga yuborib bo‘lmadi: {e}")
+    else:
+        await update.message.reply_text(
+            "❗ Iltimos, buyurtma berish uchun /start buyrug‘ini yuboring va tugmani bosing."
         )
 
-        await context.bot.send_photo(
-            chat_id=ADMIN_ID,
-            photo=photo_id,
-            caption=msg,
-            parse_mode="Markdown"
-        )
+# ⛔ Xatolik tutuvchi funksiyasi
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logging.error(msg="❗ Xatolik yuz berdi:", exc_info=context.error)
+    try:
+        if update and hasattr(update, 'message') and update.message:
+            await update.message.reply_text("❗ Kechirasiz, botda xatolik yuz berdi. Iltimos, keyinroq urinib ko‘ring.")
+    except:
+        pass
 
-        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi! Tez orada siz bilan bog‘lanamiz.")
-        user_orders.pop(user_id)
-
-# === 🚀 BOTNI ISHGA TUSHURISH ===
-def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(CallbackQueryHandler(handle_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("🤖 Bot ishga tushdi...")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+# 🟢 Botni ishga tushurish
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CallbackQueryHandler(button_handler))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+app.add_error_handler(error_handler)
+app.run_polling()
