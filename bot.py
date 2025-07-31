@@ -1,4 +1,4 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import logging
 
@@ -9,6 +9,7 @@ CHANNEL_USERNAME = "@gurlan_bozori1"
 logging.basicConfig(level=logging.INFO)
 
 user_state = {}
+pending_posts = {}  # admin tasdiqlashini kutayotganlar
 
 # /start komandasi
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -84,35 +85,72 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Rasm yuborish
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
     photo = update.message.photo[-1].file_id
     caption = update.message.caption or "🛍 Mahsulot"
 
+    # Adminga yuborish
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 Buyurtma berish ➡️", url="https://t.me/Buyccc_bot?start=order")]
+        [
+            InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"approve|{photo}|{user.id}"),
+            InlineKeyboardButton("❌ Bekor qilish", callback_data=f"reject|{user.id}")
+        ]
     ])
 
     try:
-        await context.bot.send_photo(
-            chat_id=CHANNEL_USERNAME,
+        msg = await context.bot.send_photo(
+            chat_id=ADMIN_ID,
             photo=photo,
-            caption=caption,
+            caption=f"👤 @{user.username or user.first_name}\n📸 Yangi mahsulot:\n\n{caption}",
             reply_markup=keyboard
         )
-        await update.message.reply_text("✅ Kanalga yuborildi.")
+        pending_posts[msg.message_id] = {
+            "photo": photo,
+            "caption": caption
+        }
+        await update.message.reply_text("✅ Rasm adminga yuborildi. Tasdiqlansa kanalga chiqadi.")
     except Exception as e:
         logging.error(f"Rasm yuborilmadi: {e}")
-        await update.message.reply_text("❌ Kanalga yuborishda xatolik.")
+        await update.message.reply_text("❌ Rasm yuborishda xatolik.")
 
-# Tugmani bosganda (callback emas, faqat eski versiyalar uchun)
+# Tugmani bosganda
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
-    user_state[user_id] = {"step": "product"}
-    await context.bot.send_message(
-        chat_id=user_id,
-        text="👋 Assalomu alaykum! Buyurtma uchun mahsulot nomini kiriting:"
-    )
+    data = query.data
+
+    if data.startswith("approve"):
+        _, photo_id, user_id = data.split("|")
+        original = pending_posts.get(query.message.message_id)
+        if original:
+            try:
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📦 Buyurtma berish ➡️", url="https://t.me/Buyccc_bot?start=order")]
+                ])
+                await context.bot.send_photo(
+                    chat_id=CHANNEL_USERNAME,
+                    photo=original["photo"],
+                    caption=original["caption"],
+                    reply_markup=keyboard
+                )
+                await context.bot.send_message(chat_id=int(user_id), text="✅ Mahsulotingiz kanalga chiqarildi.")
+                await query.edit_message_caption(caption="✅ Mahsulot tasdiqlandi va kanalga chiqarildi.")
+            except Exception as e:
+                await query.edit_message_caption(caption="❌ Kanalga yuborishda xatolik.")
+        pending_posts.pop(query.message.message_id, None)
+
+    elif data.startswith("reject"):
+        _, user_id = data.split("|")
+        await context.bot.send_message(chat_id=int(user_id), text="❌ Mahsulotingiz admin tomonidan rad etildi.")
+        await query.edit_message_caption(caption="🚫 Mahsulot rad etildi.")
+
+    else:
+        user_id = query.from_user.id
+        user_state[user_id] = {"step": "product"}
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="👋 Assalomu alaykum! Buyurtma uchun mahsulot nomini kiriting:"
+        )
 
 # Admin tekshirish komandasi
 async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
