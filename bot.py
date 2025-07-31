@@ -1,4 +1,4 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import logging
 
@@ -8,8 +8,8 @@ CHANNEL_USERNAME = "@gurlan_bozori1"
 
 logging.basicConfig(level=logging.INFO)
 
-user_state = {}  # Har bir foydalanuvchi uchun holat
-product_map = {}  # message_id -> photo_file_id, caption
+user_state = {}
+product_data = {}  # message_id => {"photo": file_id, "caption": text}
 
 # /start komandasi
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -22,69 +22,60 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user = update.message.from_user
 
+    username = f"@{user.username}" if user.username else f"{user.first_name or ''} {user.last_name or ''}".strip()
+    if not username:
+        username = f"ID: {user.id}"
+
     if chat_id not in user_state:
         await update.message.reply_text("Iltimos /start buyrug'ini bosing.")
         return
 
-    step = user_state[chat_id]["step"]
+    step = user_state[chat_id].get("step")
 
     if step == "phone":
         user_state[chat_id]["phone"] = text
         user_state[chat_id]["step"] = "address"
-        await update.message.reply_text("📍 Manzilingizni kiriting:")
+        await update.message.reply_text("📍 Endi manzilingizni kiriting:")
     elif step == "address":
         phone = user_state[chat_id]["phone"]
         address = text
-        product = user_state[chat_id].get("product", {})
-
-        username = f"@{user.username}" if user.username else f"{user.first_name or ''} {user.last_name or ''}".strip()
-        if not username:
-            username = f"ID: {user.id}"
+        product = user_state[chat_id].get("product")
 
         await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada siz bilan bog‘lanamiz.")
 
-        msg = (
-            f"🆕 Yangi buyurtma:\n"
-            f"👤 {username}\n"
-            f"📞 {phone}\n"
-            f"📍 {address}"
-        )
-
-        try:
-            if product:
-                await context.bot.send_photo(
-                    chat_id=ADMIN_ID,
-                    photo=product["photo"],
-                    caption=f"{product['caption']}\n\n{msg}"
-                )
-            else:
+        msg = f"🆕 Yangi buyurtma:\n👤 {username}\n📞 {phone}\n📍 {address}"
+        if product:
+            msg += f"\n🛍 {product['caption']}"
+            try:
+                await context.bot.send_photo(chat_id=ADMIN_ID, photo=product["photo"], caption=msg)
+            except:
                 await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
-        except Exception as e:
-            logging.error(f"Adminga yuborishda xatolik: {e}")
+        else:
+            await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
 
         user_state.pop(chat_id)
+    else:
+        await update.message.reply_text("Iltimos /start buyrug'ini bosing.")
 
-# Foto yuborilganda — kanalga yuboramiz
+# Rasm kelganda — kanalda e’lon qiladi
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1].file_id
     caption = update.message.caption or "🛍 Mahsulot"
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 Buyurtma berish", callback_data=f"order|{photo}|{caption}")]
+        [InlineKeyboardButton("📦 Buyurtma berish", callback_data=f"order|{update.message.message_id}")]
     ])
 
     try:
-        sent = await context.bot.send_photo(
+        msg = await context.bot.send_photo(
             chat_id=CHANNEL_USERNAME,
             photo=photo,
             caption=caption,
             reply_markup=keyboard
         )
-
-        message_id = sent.message_id
-        product_map[message_id] = {"photo": photo, "caption": caption}
-
         await update.message.reply_text("✅ Kanalga yuborildi.")
+        # Mahsulot ma’lumotini saqlab qo’yamiz
+        product_data[msg.message_id] = {"photo": photo, "caption": caption}
     except Exception as e:
         logging.error(f"Kanalga yuborilmadi: {e}")
         await update.message.reply_text("❌ Kanalga yuborishda xatolik.")
@@ -93,27 +84,27 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
-    data = query.data
     user_id = query.from_user.id
 
+    data = query.data
     if data.startswith("order|"):
         try:
-            _, photo, caption = data.split("|", 2)
-            user_state[user_id] = {
-                "step": "phone",
-                "product": {"photo": photo, "caption": caption}
-            }
-            await context.bot.send_message(chat_id=user_id, text="📞 Telefon raqamingizni kiriting:")
+            msg_id = int(data.split("|")[1])
+            product = product_data.get(msg_id)
+            if product:
+                user_state[user_id] = {"step": "phone", "product": product}
+                await context.bot.send_message(chat_id=user_id, text="📞 Telefon raqamingizni kiriting:")
+            else:
+                await context.bot.send_message(chat_id=user_id, text="❌ Mahsulot topilmadi.")
         except Exception as e:
-            logging.error(f"Callback parsing xatosi: {e}")
-            await context.bot.send_message(chat_id=user_id, text="❌ Buyurtma boshlashda xatolik yuz berdi.")
+            logging.error(f"Callback error: {e}")
+            await context.bot.send_message(chat_id=user_id, text="❌ Xatolik yuz berdi.")
 
-# Admin test komandasi
+# Admin test
 async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        await context.bot.send_message(chat_id=ADMIN_ID, text="✅ Adminga test xabar yuborildi.")
-        await update.message.reply_text("✅ Adminga yuborildi.")
+        await context.bot.send_message(chat_id=ADMIN_ID, text="🔔 Test xabari.")
+        await update.message.reply_text("✅ Adminga xabar yuborildi.")
     except Exception as e:
         await update.message.reply_text(f"❌ Xatolik: {e}")
 
