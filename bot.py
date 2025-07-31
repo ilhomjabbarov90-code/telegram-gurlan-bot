@@ -7,23 +7,30 @@ ADMIN_ID = 1722876301
 CHANNEL_USERNAME = "@gurlan_bozori1"
 
 logging.basicConfig(level=logging.INFO)
+
 user_state = {}
 
 # /start komandasi
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Assalomu alaykum! Mahsulot rasmini yuboring.")
+    chat_id = update.message.chat_id
+    args = context.args
+    if args and args[0] == "order":
+        await update.message.reply_text("📦 Siz mahsulot buyurtmasini boshladingiz.")
+    else:
+        await update.message.reply_text("👋 Assalomu alaykum! Buyurtma berish uchun mahsulot nomini kiriting:")
+    user_state[chat_id] = {"step": "product"}
 
-# Foydalanuvchi tugma bosgandan keyin /start ni bosmay turib yozgan bo‘lsa
+# Matnli xabarlar
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
     text = update.message.text
     user = update.message.from_user
 
-    if chat_id not in user_state or "step" not in user_state[chat_id]:
-        await update.message.reply_text("Iltimos, buyurtma tugmasini bosing yoki /start buyrug'ini yuboring.")
+    if not user_state.get(chat_id):
+        await update.message.reply_text("Iltimos /start buyrug'ini bosing.")
         return
 
-    step = user_state[chat_id]["step"]
+    step = user_state[chat_id].get("step")
 
     if step == "product":
         user_state[chat_id]["product"] = text
@@ -32,42 +39,57 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif step == "phone":
         user_state[chat_id]["phone"] = text
         user_state[chat_id]["step"] = "address"
-        await update.message.reply_text("📍 Manzilingizni kiriting:")
+        await update.message.reply_text("📍 Endi manzilingizni kiriting:")
     elif step == "address":
-        address = text
-        product = user_state[chat_id].get("product", "Nomaʼlum")
+        product = user_state[chat_id].get("product", "Noma'lum mahsulot")
         phone = user_state[chat_id]["phone"]
-        photo_id = user_state[chat_id].get("photo_id")
-        user_link = f"@{user.username}" if user.username else f"[{user.full_name}](tg://user?id={user.id})"
+        address = text
 
-        caption = (
-            f"🆕 *Yangi buyurtma:*\n"
-            f"👤 {user_link}\n"
+        if user.username:
+            username_link = f"@{user.username}"
+        else:
+            name = (user.first_name or "") + " " + (user.last_name or "")
+            username_link = f"[{name.strip()}](tg://user?id={user.id})"
+
+        msg = (
+            "🆕 *Yangi buyurtma:*\n"
+            f"👤 {username_link}\n"
             f"📦 Mahsulot: {product}\n"
             f"📞 Telefon: {phone}\n"
             f"📍 Manzil: {address}"
         )
 
-        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada bogʻlanamiz.")
+        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada siz bilan bog'lanamiz.")
 
         try:
-            if photo_id:
-                await context.bot.send_photo(chat_id=ADMIN_ID, photo=photo_id, caption=caption, parse_mode="Markdown")
+            if "photo_id" in user_state[chat_id]:
+                await context.bot.send_photo(
+                    chat_id=ADMIN_ID,
+                    photo=user_state[chat_id]["photo_id"],
+                    caption=msg,
+                    parse_mode="Markdown"
+                )
             else:
-                await context.bot.send_message(chat_id=ADMIN_ID, text=caption, parse_mode="Markdown")
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=msg,
+                    parse_mode="Markdown"
+                )
         except Exception as e:
-            logging.error(f"Admin xabari yuborishda xatolik: {e}")
+            logging.error(f"Admin xabar yuborishda xatolik: {e}")
 
         user_state.pop(chat_id)
+    else:
+        await update.message.reply_text("Iltimos /start buyrug'ini bosing.")
 
-# Admin rasm yuboradi
+# Rasm yuborish
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1].file_id
     caption = update.message.caption or "🛍 Mahsulot"
-keyboard = InlineKeyboardMarkup([
-    [InlineKeyboardButton("📦 Buyurtma berish ➡️", url="https://t.me/Buyccc_bot?start=buyurtma")]
-])
-    
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📦 Buyurtma berish ➡️", url="https://t.me/Buyccc_bot?start=order")]
+    ])
 
     try:
         await context.bot.send_photo(
@@ -78,45 +100,35 @@ keyboard = InlineKeyboardMarkup([
         )
         await update.message.reply_text("✅ Kanalga yuborildi.")
     except Exception as e:
-        logging.error(f"Kanalga yuborishda xatolik: {e}")
+        logging.error(f"Rasm yuborilmadi: {e}")
         await update.message.reply_text("❌ Kanalga yuborishda xatolik.")
 
-# Tugma bosilganda
+# Tugmani bosganda (callback emas, faqat eski versiyalar uchun)
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user = query.from_user
-    user_id = user.id
-    message = query.message
-
     await query.answer()
+    user_id = query.from_user.id
+    user_state[user_id] = {"step": "product"}
+    await context.bot.send_message(
+        chat_id=user_id,
+        text="👋 Assalomu alaykum! Buyurtma uchun mahsulot nomini kiriting:"
+    )
 
-    # Rasm ID sini saqlaymiz
-    if message.photo:
-        photo_id = message.photo[-1].file_id
-        user_state[user_id] = {
-            "step": "product",
-            "photo_id": photo_id
-        }
-    else:
-        user_state[user_id] = {
-            "step": "product"
-        }
-
-    await context.bot.send_message(chat_id=user_id, text="📦 Buyurtma uchun mahsulot nomini kiriting:")
-
-# Test xabar
+# Admin tekshirish komandasi
 async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=ADMIN_ID, text="🔔 Test xabari.")
-    await update.message.reply_text("✅ Adminga test xabar yuborildi.")
+    try:
+        await context.bot.send_message(chat_id=ADMIN_ID, text="🔔 Test xabari.")
+        await update.message.reply_text("✅ Adminga xabar yuborildi.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Xatolik: {e}")
 
-# Botni ishga tushuramiz
+# Botni ishga tushurish
 app = ApplicationBuilder().token(BOT_TOKEN).build()
-
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("admin", test_admin))
 app.add_handler(CallbackQueryHandler(button_callback))
-app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 if __name__ == "__main__":
     app.run_polling()
