@@ -1,5 +1,8 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    CallbackQueryHandler, ContextTypes, filters
+)
 import logging
 
 BOT_TOKEN = "7980498195:AAERSaDhImL7ypJjYex0LNclaepboP-C6nE"
@@ -7,21 +10,35 @@ ADMIN_ID = 1722876301
 CHANNEL_USERNAME = "@gurlan_bozori1"
 
 logging.basicConfig(level=logging.INFO)
-
 user_state = {}
 
 # /start komandasi
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📞 Telefon raqamingizni kiriting:")
-    user_state[update.message.chat_id] = {"step": "phone"}
+    chat_id = update.message.chat_id
+    args = context.args
+    product_info = "❓Mahsulot noma'lum"
 
-# Matnli xabarlar
+    if args:
+        product_info = f"🛍 Siz tanlagan mahsulot: {args[0]}"
+        user_state[chat_id] = {"step": "phone", "product": args[0]}
+    else:
+        user_state[chat_id] = {"step": "phone"}
+
+    await update.message.reply_text(
+        f"{product_info}\n\n📞 Telefon raqamingizni kiriting:"
+    )
+
+# Matnli xabarlar bilan ishlash
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
     text = update.message.text
     user = update.message.from_user
 
-    if not user_state.get(chat_id):
+    username = f"@{user.username}" if user.username else f"{user.first_name or ''} {user.last_name or ''}".strip()
+    if not username:
+        username = f"ID: {user.id}"
+
+    if chat_id not in user_state:
         await update.message.reply_text("Iltimos /start buyrug'ini bosing.")
         return
 
@@ -31,30 +48,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_state[chat_id]["phone"] = text
         user_state[chat_id]["step"] = "address"
         await update.message.reply_text("📍 Endi manzilingizni kiriting:")
+
     elif step == "address":
         phone = user_state[chat_id]["phone"]
         address = text
+        product = user_state[chat_id].get("product", "❓Mahsulot noma'lum")
 
-        # Foydalanuvchi nomi yoki profili havolasi
-        if user.username:
-            username_link = f"@{user.username}"
-        else:
-            name = (user.first_name or "") + " " + (user.last_name or "")
-            username_link = f"[{name.strip()}](tg://user?id={user.id})"
+        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada siz bilan bog‘lanamiz.")
 
         msg = (
-            "🆕 Yangi buyurtma:\n"
-            f"👤 {username_link}\n"
+            f"🆕 Yangi buyurtma:\n"
+            f"👤 {username}\n"
             f"📞 {phone}\n"
-            f"📍 {address}"
+            f"📍 {address}\n"
+            f"📦 Mahsulot: {product}"
         )
 
-        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi.")
-
         try:
-            await context.bot.send_message(
-                chat_id=ADMIN_ID, text=msg, parse_mode="Markdown"
-            )
+            await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
         except Exception as e:
             logging.error(f"Admin xabar yuborishda xatolik: {e}")
 
@@ -62,13 +73,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Iltimos /start buyrug'ini bosing.")
 
-# Rasm yuborish
+# Foto yuborilganda
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1].file_id
     caption = update.message.caption or "🛍 Mahsulot"
 
+    # Tugma URL ga mahsulot ma'lumotini uzatamiz
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 Buyurtma berish ➡️", url="https://t.me/Buyccc_bot?start=order")]
+        [InlineKeyboardButton("📦 Buyurtma berish ➡️", url=f"https://t.me/Buyccc_bot?start={photo}")]
     ])
 
     try:
@@ -83,7 +95,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Rasm yuborilmadi: {e}")
         await update.message.reply_text("❌ Kanalga yuborishda xatolik.")
 
-# Tugmani bosganda
+# Tugma bosilganda
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
