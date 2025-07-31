@@ -81,10 +81,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await context.bot.send_photo(
-            chat_id=CHANNEL_USERNAME,
-            photo=photo,
-            caption=caption,
-            reply_markup=keyboard
+    chat_id="@gurlan_bozori1",
+    photo=photo,
+    caption=caption,
+    reply_markup=keyboard
         )
         await update.message.reply_text("✅ Kanalga muvaffaqiyatli yuborildi.")
     except Exception as e:
