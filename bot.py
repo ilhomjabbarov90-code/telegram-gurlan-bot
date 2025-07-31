@@ -15,7 +15,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
     args = context.args
     if args and args[0] == "order":
-        await update.message.reply_text("📦 Siz mahsulot buyurtmasini boshladingiz.")
+        await update.message.reply_text("📦 Siz mahsulot nomini kiriting.")
     else:
         await update.message.reply_text("👋 Assalomu alaykum! Buyurtma berish uchun mahsulot nomini kiriting:")
     user_state[chat_id] = {"step": "product"}
