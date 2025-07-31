@@ -9,7 +9,7 @@ CHANNEL_USERNAME = "@gurlan_bozori1"
 
 logging.basicConfig(level=logging.INFO)
 
-# Foydalanuvchi holati va mahsulot ma’lumotlari
+# Holatni saqlovchi dictlar
 user_state = {}
 product_info = {}
 
@@ -18,7 +18,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📞 Telefon raqamingizni kiriting:")
     user_state[update.message.chat_id] = {"step": "phone"}
 
-# Matnli xabarlar bilan ishlash
+# Matnli xabarlar bilan ishlovchi handler
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
     text = update.message.text
@@ -41,14 +41,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif step == "address":
         phone = user_state[chat_id]["phone"]
         address = text
-
-        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada siz bilan bog‘lanamiz.")
-
         info = product_info.get(chat_id, {})
         photo = info.get("photo")
         caption = info.get("caption", "🛍 Mahsulot")
 
         msg = f"🆕 Yangi buyurtma:\n👤 {username}\n📞 {phone}\n📍 {address}\n\n📦 Mahsulot: {caption}"
+
+        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada siz bilan bog‘lanamiz.")
 
         try:
             if photo:
@@ -63,14 +62,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Iltimos, /start buyrug‘ini bosing.")
 
-# Admin rasm yuborganda — kanalga post qiladi
+# Admin tomonidan rasm yuborilganda uni kanalda post qilish
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
 
     user_id = update.message.from_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("Faqat admin mahsulot yuborishi mumkin.")
+        await update.message.reply_text("⛔ Faqat admin rasm yuborishi mumkin.")
         return
 
     photo = update.message.photo[-1].file_id
@@ -87,12 +86,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=caption,
             reply_markup=keyboard
         )
-        await update.message.reply_text("✅ Kanalga yuborildi.")
+        await update.message.reply_text("✅ Kanalga muvaffaqiyatli yuborildi.")
     except Exception as e:
         logging.error(f"Kanalga yuborilmadi: {e}")
-        await update.message.reply_text("❌ Kanalga yuborishda xatolik. Bot kanalga admin bo‘lganiga ishonch hosil qiling.")
+        await update.message.reply_text("❌ Kanalga yuborilmadi. Bot kanalga admin ekanligiga ishonch hosil qiling.")
 
-# Tugma bosilganda
+# Tugmani bosganda buyurtma jarayonini boshlash
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -104,12 +103,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _, photo_id, caption = data.split("|", 2)
             product_info[user_id] = {"photo": photo_id, "caption": caption}
         except Exception as e:
-            logging.error(f"Tugma parsing xatosi: {e}")
+            logging.error(f"Callback parsing xatosi: {e}")
 
         user_state[user_id] = {"step": "phone"}
         await context.bot.send_message(chat_id=user_id, text="📞 Telefon raqamingizni kiriting:")
 
-# Admin uchun test komanda
+# Admin test komandasi
 async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(chat_id=ADMIN_ID, text="🔔 Test xabari.")
