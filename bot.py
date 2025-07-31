@@ -64,10 +64,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1].file_id
     caption = update.message.caption or "🛍 Mahsulot"
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 Buyurtma berish ➡️", callback_data="order_now")]
-    ])
+keyboard = InlineKeyboardMarkup([
+    [InlineKeyboardButton("📦 Buyurtma berish ➡️", url="https://t.me/gurlanbuyurtmabot?start=buyurtma")]
+])
+    
 
     try:
         await context.bot.send_photo(
