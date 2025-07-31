@@ -1,28 +1,37 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import logging
+from telegram import (
+    Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+)
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
-    CallbackQueryHandler, ContextTypes, filters
+    CallbackQueryHandler, ContextTypes, filters, ConversationHandler
 )
-import logging
-import re
 
-BOT_TOKEN = "7980498195:AAERSaDhImL7ypJjYex0LNclaepboP-C6nE"
+# --- CONFIG ---
+BOT_TOKEN = "8032558089:AAE00ASKBWHhcmsE1zYW2_u4ZLaLo6F7CIA"
+CHANNEL_ID = -1002100521747  # <-- Bu yerga kanalning ID'si yoziladi
 ADMIN_ID = 1722876301
-CHANNEL_USERNAME = "@gurlan_bozori1"
 
+# --- LOGGER ---
 logging.basicConfig(level=logging.INFO)
-user_state = {}
+logger = logging.getLogger(__name__)
 
-def escape_markdown(text):
-    return re.sub(r'([_*\[\]()~`>#+\-=|{}.!\\])', r'\\\1', text)
+# --- STATES ---
+ASK_ADDRESS, ASK_PHONE = range(2)
 
-# /start komandasi
+# --- Global dict ---
+user_data_store = {}
+
+# --- Start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📞 Telefon raqamingizni kiriting:")
-    user_state[update.message.chat_id] = {"step": "phone"}
+    await update.message.reply_text("Rasm yuboring – kanalga buyurtma bilan joylayman.")
 
-# Foto yuborilganda — admin mahsulot joylaydi
+# --- Handle admin image (posting to channel) ---
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Siz admin emassiz.")
+        return
+
     photo = update.message.photo[-1].file_id
     caption = update.message.caption or "🛍 Mahsulot"
 
@@ -32,96 +41,88 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await context.bot.send_photo(
-            chat_id=CHANNEL_USERNAME,
+            chat_id=CHANNEL_ID,
             photo=photo,
             caption=caption,
             reply_markup=keyboard
         )
         await update.message.reply_text("✅ Kanalga yuborildi.")
     except Exception as e:
-        logging.error(f"Rasm yuborilmadi: {e}")
-        await update.message.reply_text("❌ Kanalga yuborishda xatolik.")
+        logger.error(f"Kanalga yuborishda xatolik: {e}")
+        await update.message.reply_text(f"❌ Kanalga yuborishda xatolik:\n{e}")
 
-# Tugma bosilganda — foydalanuvchiga telefon so‘raladi
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- Callback: buyurtma bosilganda ---
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
-    data = query.data
 
+    data = query.data
     if data.startswith("order:"):
         photo_id = data.split("order:")[1]
-        user_state[user_id] = {
-            "step": "phone",
-            "photo": photo_id
-        }
-        await context.bot.send_message(chat_id=user_id, text="📞 Telefon raqamingizni kiriting:")
+        user_id = query.from_user.id
+        user_data_store[user_id] = {"photo": photo_id}
+        await context.bot.send_message(chat_id=user_id, text="📍 Manzilingizni yuboring:")
+        return ASK_ADDRESS
 
-# Matnli xabarlar bilan ishlash
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
-    text = update.message.text
-    user = update.message.from_user
+# --- Step 1: Manzilni olish ---
+async def ask_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_data_store[user_id]["address"] = update.message.text
+    await update.message.reply_text("📞 Telefon raqamingizni yuboring:")
+    return ASK_PHONE
 
-    if chat_id not in user_state:
-        await update.message.reply_text("Iltimos /start buyrug'ini bosing.")
-        return
+# --- Step 2: Telefon raqamini olish ---
+async def ask_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    phone = update.message.text
+    data = user_data_store.get(user_id, {})
 
-    step = user_state[chat_id].get("step")
+    if not data:
+        await update.message.reply_text("❌ Ma’lumotlar topilmadi.")
+        return ConversationHandler.END
 
-    if step == "phone":
-        user_state[chat_id]["phone"] = text
-        user_state[chat_id]["step"] = "address"
-        await update.message.reply_text("📍 Endi manzilingizni kiriting:")
+    caption = (
+        "🆕 Yangi buyurtma!\n\n"
+        f"👤 Foydalanuvchi: @{update.effective_user.username or 'Nomalum'}\n"
+        f"📍 Manzil: {data['address']}\n"
+        f"📞 Telefon: {phone}"
+    )
 
-    elif step == "address":
-        phone = escape_markdown(user_state[chat_id]["phone"])
-        address = escape_markdown(text)
-        name = escape_markdown(user.first_name or "Foydalanuvchi")
-        user_link = f"[{name}](tg://user?id={user.id})"
-        photo = user_state[chat_id].get("photo")
-
-        msg = f"🆕 Yangi buyurtma:\n👤 {user_link}\n📞 {phone}\n📍 {address}"
-
-        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada siz bilan bog‘lanamiz.")
-
-        try:
-            if photo:
-                await context.bot.send_photo(
-                    chat_id=ADMIN_ID,
-                    photo=photo,
-                    caption=msg,
-                    parse_mode="Markdown"
-                )
-            else:
-                await context.bot.send_message(
-                    chat_id=ADMIN_ID,
-                    text=msg,
-                    parse_mode="Markdown"
-                )
-        except Exception as e:
-            logging.error(f"Admin xabar yuborishda xatolik: {e}")
-
-        user_state.pop(chat_id)
-
-    else:
-        await update.message.reply_text("Iltimos /start buyrug'ini bosing.")
-
-# Test komanda
-async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        await context.bot.send_message(chat_id=ADMIN_ID, text="🔔 Test xabari.")
-        await update.message.reply_text("✅ Adminga xabar yuborildi.")
+        await context.bot.send_photo(
+            chat_id=ADMIN_ID,
+            photo=data['photo'],
+            caption=caption
+        )
+        await update.message.reply_text("✅ Buyurtma qabul qilindi.")
     except Exception as e:
-        await update.message.reply_text(f"❌ Xatolik: {e}")
+        logger.error(f"Buyurtmani yuborishda xatolik: {e}")
+        await update.message.reply_text(f"❌ Xatolik:\n{e}")
 
-# Ishga tushurish
-app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("admin", test_admin))
-app.add_handler(CallbackQueryHandler(button_callback))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    user_data_store.pop(user_id, None)
+    return ConversationHandler.END
 
+# --- Cancel ---
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ Bekor qilindi.")
+    return ConversationHandler.END
+
+# --- Run bot ---
 if __name__ == "__main__":
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(handle_callback, pattern="^order:")],
+        states={
+            ASK_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_address)],
+            ASK_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_phone)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(conv_handler)
+
+    print("🤖 Bot ishga tushdi...")
     app.run_polling()
