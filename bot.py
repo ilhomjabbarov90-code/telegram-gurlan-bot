@@ -9,11 +9,13 @@ CHANNEL_USERNAME = "@gurlan_bozori1"
 logging.basicConfig(level=logging.INFO)
 
 user_state = {}
+last_post = {}  # So‘nggi kanalga yuborilgan rasm va caption
 
 # /start komandasi
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📞 Telefon raqamingizni kiriting:")
-    user_state[update.message.chat_id] = {"step": "phone"}
+    chat_id = update.message.chat_id
+    await update.message.reply_text("👋 Assalomu alaykum! Buyurtma uchun mahsulot nomini kiriting:")
+    user_state[chat_id] = {"step": "product"}
 
 # Matnli xabarlar
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -27,11 +29,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     step = user_state[chat_id].get("step")
 
-    if step == "phone":
+    if step == "product":
+        user_state[chat_id]["product"] = text
+        user_state[chat_id]["step"] = "phone"
+        await update.message.reply_text("📞 Telefon raqamingizni kiriting:")
+    elif step == "phone":
         user_state[chat_id]["phone"] = text
         user_state[chat_id]["step"] = "address"
         await update.message.reply_text("📍 Endi manzilingizni kiriting:")
     elif step == "address":
+        product = user_state[chat_id].get("product", "Noma'lum mahsulot")
         phone = user_state[chat_id]["phone"]
         address = text
 
@@ -43,18 +50,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             username_link = f"[{name.strip()}](tg://user?id={user.id})"
 
         msg = (
-            "🆕 Yangi buyurtma:\n"
+            "🆕 *Yangi buyurtma:*\n"
             f"👤 {username_link}\n"
-            f"📞 {phone}\n"
-            f"📍 {address}"
+            f"📦 Mahsulot: {product}\n"
+            f"📞 Telefon: {phone}\n"
+            f"📍 Manzil: {address}"
         )
 
-        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi.")
+        await update.message.reply_text("✅ Buyurtmangiz qabul qilindi. Tez orada siz bilan bog'lanamiz.")
 
         try:
-            await context.bot.send_message(
-                chat_id=ADMIN_ID, text=msg, parse_mode="Markdown"
-            )
+            if "photo_id" in user_state[chat_id]:
+                caption = user_state[chat_id].get("caption", "🛍 Mahsulot")
+                await context.bot.send_photo(
+                    chat_id=ADMIN_ID,
+                    photo=user_state[chat_id]["photo_id"],
+                    caption=msg + f"\n\n🖼 {caption}",
+                    parse_mode="Markdown"
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID, text=msg, parse_mode="Markdown"
+                )
         except Exception as e:
             logging.error(f"Admin xabar yuborishda xatolik: {e}")
 
@@ -68,7 +85,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = update.message.caption or "🛍 Mahsulot"
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📦 Buyurtma berish ➡️", url="https://t.me/Buyccc_bot?start=order")]
+        [InlineKeyboardButton("📦 Buyurtma berish ➡️", callback_data="order_now")]
     ])
 
     try:
@@ -79,6 +96,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
         await update.message.reply_text("✅ Kanalga yuborildi.")
+
+        # So‘nggi rasmni saqlaymiz
+        last_post["photo_id"] = photo
+        last_post["caption"] = caption
+
     except Exception as e:
         logging.error(f"Rasm yuborilmadi: {e}")
         await update.message.reply_text("❌ Kanalga yuborishda xatolik.")
@@ -88,11 +110,19 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    user_state[user_id] = {"step": "phone"}
 
-    await context.bot.send_message(chat_id=user_id, text="📞 Telefon raqamingizni kiriting:")
+    user_state[user_id] = {
+        "step": "product",
+        "photo_id": last_post.get("photo_id"),
+        "caption": last_post.get("caption", "🛍 Mahsulot")
+    }
 
-# Admin test
+    await context.bot.send_message(
+        chat_id=user_id,
+        text="👋 Assalomu alaykum! Buyurtma uchun mahsulot nomini kiriting:"
+    )
+
+# Admin test komandasi
 async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(chat_id=ADMIN_ID, text="🔔 Test xabari.")
