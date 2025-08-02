@@ -1,4 +1,4 @@
-    from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import logging
 
@@ -92,7 +92,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user_id = query.from_user.id
     user_state[user_id] = {"step": "product"}
-
     await context.bot.send_message(chat_id=user_id, text="🛍 Mahsulot nomini kiriting:")
 
 # Admin test komandasi
