@@ -21,7 +21,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user = update.message.from_user
 
-    if not user_state.get(chat_id):
+    if chat_id not in user_state:
         await update.message.reply_text("Iltimos /start buyrug'ini bosing.")
         return
 
@@ -70,9 +70,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1].file_id
     caption = update.message.caption or "🛍 Mahsulot"
 
-keyboard = InlineKeyboardMarkup([
-    [InlineKeyboardButton("📦 Buyurtma berish ➡️", url="https://t.me/Buyccc_bot")]
-])
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📦 Buyurtma berish ➡️", url="https://t.me/Buyccc_bot")]
+    ])
 
     try:
         await context.bot.send_photo(
@@ -86,7 +86,7 @@ keyboard = InlineKeyboardMarkup([
         logging.error(f"Kanalga yuborilmadi: {e}")
         await update.message.reply_text("❌ Kanalga yuborishda xatolik.")
 
-# Tugma bosilganda
+# Tugma bosilganda (faqat kerak bo‘lsa)
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
